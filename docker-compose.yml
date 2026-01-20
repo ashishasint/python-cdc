@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: pg-cdc-demo
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Vasv@9344
+      POSTGRES_DB: cdc_demo
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"
+      - "-c"
+      - "max_replication_slots=10"
+      - "-c"
+      - "max_wal_senders=10"
+
+volumes:
+  pg_data:
