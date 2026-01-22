@@ -2,17 +2,17 @@
 
 In one terminal
 
-1. ```
-   .\cloud-sql-proxy.exe <DB_URL> --port=<PORT_NUMBER> --debug
-   ```
+```sh
+.\cloud-sql-proxy.exe <DB_URL> --port=<PORT_NUMBER> --debug
+```
 
 In 2nd terminal 
-2. ```
+```sh
 python cdc_consumer.py
 ```
 
 In 3rd terminal 
-3. ```
+```sh
 python test_changes.py
 ```
 
@@ -41,4 +41,3 @@ Run the app
 ```sh
 gcloud beta run deploy  --image gcr.io/integral-iris-449816-g3/asint_python_cdc  asint-python-cdc
 ```
-````
