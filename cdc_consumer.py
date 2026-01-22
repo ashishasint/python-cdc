@@ -8,6 +8,11 @@ from datetime import datetime
 import logging
 import json
 import os
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -345,7 +350,7 @@ class PostgresCDCConsumer:
                 traceback.print_exc()
 
         try:
-            self.cursor.consume_stream(consume_message)
+            self.cursor.consume_stream(consume_message, keepalive_interval=10)
         except StopIteration:
             logger.info("Replication stream stopped")
 
@@ -363,15 +368,39 @@ class PostgresCDCConsumer:
         logger.info("Connection closed")
 
 
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+    def log_message(self, format, *args):
+        pass  # Suppress health check logs
+
+
+def start_health_server(port: int):
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    logger.info(f"Health check server started on port {port}")
+    server.serve_forever()
+
+
 def main():
+    # Start health check server for Cloud Run
+    health_port = int(os.environ.get("PORT", 8080))
+    health_thread = threading.Thread(
+        target=start_health_server, args=(health_port,), daemon=True
+    )
+    health_thread.start()
+
     config = CDCConfig(
-        host="localhost",
-        port=5433,
-        user="postgres",
-        password="Vasv@9344",
-        database="cdc_demo",
-        slot_name="python_cdc_slot",
-        publication_name="cdc_publication",
+        host=os.environ.get("PG_HOST", "localhost"),
+        port=int(os.environ.get("PG_PORT", 5433)),
+        user=os.environ.get("PG_USER", "postgres"),
+        password=os.environ.get("PG_PASSWORD", "Vasv@9344"),
+        database=os.environ.get("PG_DATABASE", "cdc_demo"),
+        slot_name=os.environ.get("PG_SLOT_NAME", "python_cdc_slot"),
+        publication_name=os.environ.get("PG_PUBLICATION", "cdc_publication"),
     )
 
     consumer = PostgresCDCConsumer(config)
