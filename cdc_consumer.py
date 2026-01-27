@@ -11,6 +11,9 @@ import os
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from dotenv import load_dotenv
+from queue import Queue
+
+EVENT_QUEUE = Queue(maxsize=1000)  # backpressure protection
 
 load_dotenv()
 
@@ -383,6 +386,41 @@ def start_health_server(port: int):
     server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
     logger.info(f"Health check server started on port {port}")
     server.serve_forever()
+import threading
+import time
+
+def worker(worker_id: int, queue: Queue):
+    print(f"⚙️ Worker-{worker_id} started")
+
+    while True:
+        event = queue.get()  # blocks until event available
+
+        try:
+            print(
+                f"⚙️ Worker-{worker_id} processing "
+                f"{event.operation} on {event.schema}.{event.table}"
+            )
+
+            # 🔥 simulate real work
+            time.sleep(1)
+
+            print("\n" + "=" * 60)
+            print(f"🔔 CDC EVENT: {event.operation}")
+            print(f"   Table: {event.schema}.{event.table}")
+            print(f"   Time: {event.timestamp}")
+
+            if event.old_values:
+                print(f"   Old Values: {json.dumps(event.old_values, indent=6)}")
+            if event.new_values:
+                print(f"   New Values: {json.dumps(event.new_values, indent=6)}")
+
+            print("=" * 60)
+
+        except Exception as e:
+            print(f"❌ Worker-{worker_id} failed: {e}")
+
+        finally:
+            queue.task_done()
 
 
 def main():
@@ -405,24 +443,44 @@ def main():
 
     consumer = PostgresCDCConsumer(config)
 
-    def handle_event(event: CDCEvent):
-        """Callback to handle CDC events"""
-        print("\n" + "=" * 60)
-        print(f"🔔 CDC EVENT: {event.operation}")
-        print(f"   Table: {event.schema}.{event.table}")
-        print(f"   Time: {event.timestamp}")
+    def handle_event(event):
+        """
+        Producer: puts CDC events into queue
+        """
+        EVENT_QUEUE.put(event, block=True)
+        print(f"📥 Enqueued: {event.operation} {event.table}")
 
-        if event.old_values:
-            print(f"   Old Values: {json.dumps(event.old_values, indent=6)}")
-        if event.new_values:
-            print(f"   New Values: {json.dumps(event.new_values, indent=6)}")
+    # def handle_event(event: CDCEvent):
+    #     """Callback to handle CDC events"""
+    #     print("\n" + "=" * 60)
+    #     print(f"🔔 CDC EVENT: {event.operation}")
+    #     print(f"   Table: {event.schema}.{event.table}")
+    #     print(f"   Time: {event.timestamp}")
 
-        print("=" * 60)
+    #     if event.old_values:
+    #         print(f"   Old Values: {json.dumps(event.old_values, indent=6)}")
+    #     if event.new_values:
+    #         print(f"   New Values: {json.dumps(event.new_values, indent=6)}")
+
+    #     print("=" * 60)
 
     try:
         consumer.connect()
         consumer.create_replication_slot()
+
+        # Start worker threads
+        WORKER_COUNT = 3
+
+        for i in range(WORKER_COUNT):
+            t = threading.Thread(
+                target=worker,
+                args=(i, EVENT_QUEUE),
+                daemon=True
+            )
+            t.start()
+
         consumer.start_replication(handle_event)
+
     except KeyboardInterrupt:
         logger.info("\nShutting down gracefully...")
     except Exception as e:
