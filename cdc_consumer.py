@@ -10,7 +10,7 @@ import threading
 import time
 
 from utils.cdc_config import CDCConfig
-from utils.cdc_consumer import PostgresCDCConsumer
+from utils.postgre_cdc_consumer import PostgresCDCConsumer
 
 
 EVENT_QUEUE = Queue(maxsize=1000)  # backpressure protection
