@@ -98,9 +98,8 @@ def main():
         consumer.create_replication_slot()
 
         # Start worker threads
-        WORKER_COUNT = 3
 
-        for i in range(WORKER_COUNT):
+        for i in range(int(os.environ.get("CDC_WORKER_COUNT", 3))):
             t = threading.Thread(target=worker, args=(i, EVENT_QUEUE), daemon=True)
             t.start()
 
